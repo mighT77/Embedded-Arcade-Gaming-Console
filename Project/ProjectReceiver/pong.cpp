@@ -1,17 +1,21 @@
 #include "pong.h"
 #include "message_struct.h"  // Include the struct_message definition
+#include "ESP32S3VGA.h"
+#include <GfxWrapper.h>
 
-extern TFT_eSPI tft;  // External TFT object
+extern VGA vga;
+extern Mode mode;
+extern GfxWrapper<VGA> gfx;  // GfxWrapper for drawing to the VGA
 
 // Pong game variables
 int paddle_h = 30;
 int paddle_w = 4;
-int lpaddle_x = 0;
-int rpaddle_x;
-int lpaddle_y;
-int rpaddle_y;
+int lpaddle_x = 0;  // Left paddle
+int rpaddle_x;      // Right paddle
+int lpaddle_y;      // Left paddle position
+int rpaddle_y;      // Right paddle position
 int ball_x, ball_y;
-int ball_dx = 1, ball_dy = 1;
+int ball_dx = 2, ball_dy = 2;  // Increased ball speed
 int ball_w = 6;
 int ball_h = 6;
 int dashline_x;
@@ -26,29 +30,25 @@ int computerScore = 0;
 
 // Timing variables
 unsigned long lastUpdate = 0;  // Stores the last time the game was updated
-int updateDelay = 30;  // Delay in milliseconds between each update (controls game speed)
+int updateDelay = 20;          // Delay in milliseconds between each update (controls game speed)
 
 // Pong game setup
 void setupPong() {
-    // Initialize the TFT display
-    tft.init();
-    tft.setRotation(1);  // Set to landscape mode
-
     // Clear the screen first to remove any remnants from the menu
-    tft.fillScreen(TFT_BLACK);
+    vga.clear(vga.rgb(0, 0, 0));
 
     // Set the positions of paddles
-    rpaddle_x = tft.width() - paddle_w;
-    lpaddle_y = tft.height() / 2 - paddle_h / 2;
-    rpaddle_y = lpaddle_y;
+    rpaddle_x = 640 - paddle_w;  // Assuming VGA width of 640
+    lpaddle_y = 240 - paddle_h / 2; // Center the left paddle
+    rpaddle_y = lpaddle_y;  // Initialize right paddle at the same height
 
     // Set ball initial position
-    ball_x = tft.width() / 2;
-    ball_y = tft.height() / 2;
+    ball_x = 320;  // Center the ball on the screen
+    ball_y = 240;
 
     // Set midline position
-    dashline_x = tft.width() / 2 - 1;
-    dashline_n = tft.height() / dashline_h;
+    dashline_x = 320 - 1; // Midpoint for dashline
+    dashline_n = 480 / dashline_h; // Assuming VGA height of 480
 
     // Draw the midline, paddles, and ball
     drawMidline();
@@ -61,48 +61,38 @@ void setupPong() {
 
 // Draw the midline
 void drawMidline() {
-    tft.startWrite();
-    tft.setAddrWindow(dashline_x, 0, dashline_w, tft.height());
-
     for (int i = 0; i < dashline_n; i += 2) {
-        tft.pushColor(TFT_WHITE, dashline_w * dashline_h);  // Dash pixels
-        tft.pushColor(TFT_BLACK, dashline_w * dashline_h);  // Gap pixels
+        gfx.fillRect(dashline_x, i * dashline_h, dashline_w, dashline_h, vga.rgb(255, 255, 255));  // Dash pixels
+        gfx.fillRect(dashline_x, (i * dashline_h) + dashline_h, dashline_w, dashline_h, vga.rgb(0, 0, 0));  // Gap pixels
     }
-
-    tft.endWrite();
 }
 
 // Draw the paddles
 void drawPaddles() {
-    tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Left paddle
-    tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Right paddle
+    gfx.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, vga.rgb(255, 255, 255));  // Left paddle
+    gfx.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, vga.rgb(255, 255, 255));  // Right paddle
 }
 
 // Draw the ball
 void drawBall() {
-    tft.fillRect(ball_x, ball_y, ball_w, ball_h, TFT_WHITE);
+    gfx.fillRect(ball_x, ball_y, ball_w, ball_h, vga.rgb(255, 255, 255)); // Ball color white
 }
 
 // Display the scores
 void displayScores() {
-    // Define the score display positions and dimensions
-    int scoreHeight = 200;
-    int scorePadding = 10;
-    int scoreWidth = 100;
-
     // Clear just the number part of the scores area to avoid flickering
-    tft.fillRect(scorePadding, 5, scoreWidth, scoreHeight, TFT_BLACK);  // Player score area
-    tft.fillRect(tft.width() - scoreWidth - scorePadding, 5, scoreWidth, scoreHeight, TFT_BLACK);  // Computer score area
+    gfx.fillRect(10, 5, 140, 40, vga.rgb(0, 0, 0));  // Player score area
+    gfx.fillRect(640 - 150, 5, 140, 40, vga.rgb(0, 0, 0));  // Player 2 score area
 
     // Draw player score (P1)
-    tft.setTextSize(2);
-    tft.setTextColor(TFT_WHITE, TFT_BLACK);  // White text with black background (to overwrite old text)
-    tft.setCursor(scorePadding, 5);  // Position of player score
-    tft.printf("P1: %d", playerScore);
+    gfx.setTextColor(vga.rgb(255, 255, 255));  // White text
+    gfx.setTextSize(2);
+    gfx.setCursor(10, 5);  // Position of player score
+    gfx.printf("P1: %d", playerScore);
 
-    // Draw computer score (P2)
-    tft.setCursor(tft.width() - scoreWidth - scorePadding, 5);  // Position of computer score
-    tft.printf("P2: %d", computerScore);
+    // Draw player 2 score (P2)
+    gfx.setCursor(640 - 150, 5);  // Position of player 2 score
+    gfx.printf("P2: %d", computerScore);
 }
 
 // Update the game logic for Pong
@@ -116,10 +106,10 @@ void updatePongGame() {
         ball_y += ball_dy;
 
         // Clear the previous ball position
-        tft.fillRect(ball_x - ball_dx, ball_y - ball_dy, ball_w, ball_h, TFT_BLACK);
+        gfx.fillRect(ball_x - ball_dx, ball_y - ball_dy, ball_w, ball_h, vga.rgb(0, 0, 0)); // Clear previous ball position
 
         // Ball collision with top or bottom of the screen
-        if (ball_y <= 0 || ball_y + ball_h >= tft.height()) {
+        if (ball_y <= 0 || ball_y + ball_h >= 480) {  // Assuming VGA height of 480
             ball_dy = -ball_dy;
         }
 
@@ -132,11 +122,11 @@ void updatePongGame() {
 
         // Check if ball goes out of bounds (left or right)
         if (ball_x < 0) {
-            computerScore++;
+            computerScore++;  // Update Player 2's score
             displayScores();  // Update scores after a point is scored
             resetBall();
-        } else if (ball_x + ball_w > tft.width()) {
-            playerScore++;
+        } else if (ball_x + ball_w > 640) {  // Assuming VGA width of 640
+            playerScore++;  // Update Player 1's score
             displayScores();  // Update scores after a point is scored
             resetBall();
         }
@@ -144,14 +134,13 @@ void updatePongGame() {
         // Check if the game is over
         if (playerScore == 10 || computerScore == 10) {
             gameOverPong = true;
-            tft.fillScreen(TFT_RED);
-            tft.setTextSize(2);
-            tft.setTextColor(TFT_WHITE);
-            tft.setCursor(tft.width() / 2 - 40, tft.height() / 2 - 10);
-            tft.println("Game Over");
-            tft.setCursor(tft.width() / 2 - 60, tft.height() / 2 + 10);
-            tft.printf("Player %s!", (playerScore == 10) ? "Wins" : "Loses");
-            displayMenu();
+            gfx.fillScreen(vga.rgb(255, 0, 0)); // Game over screen red
+            gfx.setTextColor(vga.rgb(255, 255, 255));  // White text
+            gfx.setTextSize(2);
+            gfx.setCursor(320 - 40, 240 - 10);  // Centering for game over text
+            gfx.println("Game Over");
+            gfx.setCursor(320 - 60, 240 + 10);
+            gfx.printf("Player %s!", (playerScore == 10) ? "1 Wins" : "2 Wins");
         }
 
         // Redraw the ball
@@ -172,14 +161,22 @@ void handlePongInput(int button) {
     // Handle paddle movement based on the button input
     if (button == 1 && rpaddle_y > 0) {
         // Right paddle moving up
-        tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+        gfx.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, vga.rgb(0, 0, 0));  // Clear entire paddle before moving
         rpaddle_y -= 10;  // Move paddle up
-        tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
-    } else if (button == 2 && rpaddle_y < tft.height() - paddle_h) {
+        gfx.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, vga.rgb(255, 255, 255));  // Redraw paddle in new position
+    } else if (button == 2 && rpaddle_y < 480 - paddle_h) { // Assuming VGA height of 480
         // Right paddle moving down
-        tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+        gfx.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, vga.rgb(0, 0, 0));  // Clear entire paddle before moving
         rpaddle_y += 10;  // Move paddle down
-        tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        gfx.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, vga.rgb(255, 255, 255));  // Redraw paddle in new position
+    } else if (button == 5 && lpaddle_y > 0) {  // Player 2 controls (up)
+        gfx.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, vga.rgb(0, 0, 0));  // Clear entire paddle before moving
+        lpaddle_y -= 10;  // Move left paddle up
+        gfx.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, vga.rgb(255, 255, 255));  // Redraw paddle in new position
+    } else if (button == 6 && lpaddle_y < 480 - paddle_h) {  // Player 2 controls (down)
+        gfx.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, vga.rgb(0, 0, 0));  // Clear entire paddle before moving
+        lpaddle_y += 10;  // Move left paddle down
+        gfx.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, vga.rgb(255, 255, 255));  // Redraw paddle in new position
     }
 }
 
@@ -189,23 +186,23 @@ void updateComputerPaddle() {
 
     // Move the computer paddle towards the ball's y-position
     if (lpaddle_y + paddle_h / 2 < ball_y) {
-        tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear paddle before moving
+        gfx.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, vga.rgb(0, 0, 0));  // Clear paddle before moving
         lpaddle_y += paddleSpeed;  // Move down
-        tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        gfx.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, vga.rgb(255, 255, 255));  // Redraw paddle in new position
     } else if (lpaddle_y + paddle_h / 2 > ball_y) {
-        tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear paddle before moving
+        gfx.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, vga.rgb(0, 0, 0));  // Clear paddle before moving
         lpaddle_y -= paddleSpeed;  // Move up
-        tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        gfx.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, vga.rgb(255, 255, 255));  // Redraw paddle in new position
     }
 
     // Keep the computer paddle within the screen boundaries
     if (lpaddle_y < 0) lpaddle_y = 0;
-    if (lpaddle_y + paddle_h > tft.height()) lpaddle_y = tft.height() - paddle_h;
+    if (lpaddle_y + paddle_h > 480) lpaddle_y = 480 - paddle_h;  // Assuming VGA height of 480
 }
 
 // Reset the ball to the center after a point
 void resetBall() {
-    ball_x = tft.width() / 2;
-    ball_y = tft.height() / 2;
+    ball_x = 320;  // Center the ball
+    ball_y = 240;  // Center the ball
     ball_dx = -ball_dx;  // Change direction of the ball
 }
