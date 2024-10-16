@@ -1,4 +1,4 @@
-#include "pong.h"
+#include "pong.h" 
 #include "message_struct.h"  // Include the struct_message definition
 
 extern TFT_eSPI tft;  // External TFT object
@@ -6,10 +6,10 @@ extern TFT_eSPI tft;  // External TFT object
 // Pong game variables
 int paddle_h = 30;
 int paddle_w = 4;
-int lpaddle_x = 0;
-int rpaddle_x;
-int lpaddle_y;
-int rpaddle_y;
+int lpaddle_x = 0;  // Left paddle
+int rpaddle_x;      // Right paddle
+int lpaddle_y;      // Left paddle position
+int rpaddle_y;      // Right paddle position
 int ball_x, ball_y;
 int ball_dx = 2, ball_dy = 2;  // Increased ball speed
 int ball_w = 6;
@@ -22,11 +22,14 @@ bool gameOverPong = false;
 
 // Scores
 int playerScore = 0;
-int computerScore = 0;
+int computerScore = 0; // Updated to player 2 score
 
 // Timing variables
 unsigned long lastUpdate = 0;  // Stores the last time the game was updated
-int updateDelay = 20;  // Decreased delay in milliseconds between each update (controls game speed)
+int updateDelay = 20;          // Decreased delay in milliseconds between each update (controls game speed)
+
+// Game mode flag
+extern bool isComputerVsPlayer; // Flag to indicate if the game is Computer vs Player
 
 // Pong game setup
 void setupPong() {
@@ -92,7 +95,7 @@ void displayScores() {
 
     // Clear just the number part of the scores area to avoid flickering
     tft.fillRect(scorePadding, 5, scoreWidth, scoreHeight, TFT_BLACK);  // Player score area
-    tft.fillRect(tft.width() - scoreWidth - scorePadding, 5, scoreWidth, scoreHeight, TFT_BLACK);  // Computer score area
+    tft.fillRect(tft.width() - scoreWidth - scorePadding, 5, scoreWidth, scoreHeight, TFT_BLACK);  // Player 2 score area
 
     // Draw player score (P1)
     tft.setTextSize(2);
@@ -100,8 +103,8 @@ void displayScores() {
     tft.setCursor(scorePadding, 5);  // Position of player score
     tft.printf("P1: %d", playerScore);
 
-    // Draw computer score (P2)
-    tft.setCursor(tft.width() - scoreWidth - scorePadding, 5);  // Position of computer score
+    // Draw player 2 score (P2)
+    tft.setCursor(tft.width() - scoreWidth - scorePadding, 5);  // Position of player 2 score
     tft.printf("P2: %d", computerScore);
 }
 
@@ -132,11 +135,11 @@ void updatePongGame() {
 
         // Check if ball goes out of bounds (left or right)
         if (ball_x < 0) {
-            computerScore++;
+            computerScore++;  // Update Player 2's score
             displayScores();  // Update scores after a point is scored
             resetBall();
         } else if (ball_x + ball_w > tft.width()) {
-            playerScore++;
+            playerScore++;  // Update Player 1's score
             displayScores();  // Update scores after a point is scored
             resetBall();
         }
@@ -150,7 +153,8 @@ void updatePongGame() {
             tft.setCursor(tft.width() / 2 - 40, tft.height() / 2 - 10);
             tft.println("Game Over");
             tft.setCursor(tft.width() / 2 - 60, tft.height() / 2 + 10);
-            tft.printf("Player %s!", (playerScore == 10) ? "Wins" : "Loses");
+            tft.printf("Player %s!", (playerScore == 10) ? "1 Wins" : "2 Wins");
+            // You might want to reset the game or return to menu here
         }
 
         // Redraw the ball
@@ -159,8 +163,10 @@ void updatePongGame() {
         // Redraw the midline in every update to avoid it getting erased
         drawMidline();
 
-        // Update the computer player's paddle position
-        updateComputerPaddle();
+        // Update the computer player's paddle position if in Computer vs Player mode
+        if (isComputerVsPlayer) {
+            updateComputerPaddle();
+        }
 
         lastUpdate = currentTime;  // Update the lastUpdate time
     }
@@ -168,20 +174,54 @@ void updatePongGame() {
 
 // Handle paddle input based on message button state
 void handlePongInput(int button) {
-    // Handle paddle movement based on the button input
-    if (button == 1 && rpaddle_y > 0) {
-        // Right paddle moving up
-        tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
-        rpaddle_y -= 12;  // Move paddle up
-        tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
-    } else if (button == 2 && rpaddle_y < tft.height() - paddle_h) {
-        // Right paddle moving down
-        tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
-        rpaddle_y += 12;  // Move paddle down
-        tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+    // Check if in two-player mode
+    if (isComputerVsPlayer) {
+        // Handle paddle movement for two players
+        if (button == 1 && rpaddle_y > 0) {  // Right paddle moving up
+            tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+            rpaddle_y -= 12;  // Move paddle up
+            tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        } else if (button == 2 && rpaddle_y < tft.height() - paddle_h) {  // Right paddle moving down
+            tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+            rpaddle_y += 12;  // Move paddle down
+            tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        }
+        // Player 2 controls (left paddle)
+        if (button == 5 && lpaddle_y > 0) {  // Player 2 controls (up)
+            tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+            lpaddle_y -= 12;  // Move left paddle up
+            tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        } else if (button == 6 && lpaddle_y < tft.height() - paddle_h) {  // Player 2 controls (down)
+            tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+            lpaddle_y += 12;  // Move left paddle down
+            tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        }
+    } else {
+        // Handle paddle movement for one-player mode
+        if (button == 1 && rpaddle_y > 0) {  // Right paddle moving up
+            tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+            rpaddle_y -= 12;  // Move paddle up
+            tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        } else if (button == 2 && rpaddle_y < tft.height() - paddle_h) {  // Right paddle moving down
+            tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+            rpaddle_y += 12;  // Move paddle down
+            tft.fillRect(rpaddle_x, rpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        }
+
+        // Player 2 controls (left paddle)
+        if (button == 5 && lpaddle_y > 0) {  // Player 2 controls (up)
+            tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+            lpaddle_y -= 12;  // Move left paddle up
+            tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        } else if (button == 6 && lpaddle_y < tft.height() - paddle_h) {  // Player 2 controls (down)
+            tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_BLACK);  // Clear entire paddle before moving
+            lpaddle_y += 12;  // Move left paddle down
+            tft.fillRect(lpaddle_x, lpaddle_y, paddle_w, paddle_h, TFT_WHITE);  // Redraw paddle in new position
+        }
     }
 }
 
+// Update the computer-controlled paddle (left paddle)
 void updateComputerPaddle() {
     int paddleSpeed = 1;  
     // Move the computer paddle towards the ball's y-position
